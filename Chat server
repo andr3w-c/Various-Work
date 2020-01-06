@@ -1,0 +1,272 @@
+#Chat SERVER
+#Names:  Andrew Cisneros & Eric Ackley
+# CS 436 - Intro to Networking
+
+
+import socket, threading
+
+serverPort = 1500
+requestUsername = "requestUsername"
+invalidUser = "invalidUser"
+menu = "--------------- \n 1. List Users \n 2. Chat \n 3. Exit \n --------------\n"
+
+#list for client handle threads
+handleThreads = []
+connectionList = []
+userList = []
+inviteList = []
+
+#create server socket - listening for client sockets
+try:
+    serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+except:
+    print("Server listening socket faild to create")
+else:
+    print("Server started")
+    serverSocket.bind(('',serverPort))
+    serverSocket.listen(5)
+
+def startChat(user1, user2):
+    soc1 = finduserSocket(user1)
+    soc2 = finduserSocket(user2)
+
+    t1 = threading.Thread(target = recv_send, args = (soc1, soc2))
+    t2 = threading.Thread(target = recv_send, args = (soc2, soc1))
+
+def recv_send(soc1, soc2):
+    try:
+        msg = soc1.recv(1024).decode
+    except:
+        soc1.close()
+    else:
+        soc2.send(msg.encode())
+
+#finds the socket for 'username'
+def finduserSoscket(username):
+    for i in connectionList:
+        if i[1] == username:
+            return i[0]
+
+#updates invite addressed to user, with answer
+def updateInvite(user, answer):
+    for i in connectionList:
+        if i[1] == user:
+            i[2] = answer
+
+
+#searches for a invite addressed to 'user'. returns the username of who the invite is from
+#if no invites for the user exists. return false
+def searchInvites(user):
+    for i in inviteList:
+        if(i[1] == user): 
+           return i[0]
+    return False
+
+def accept_new():
+    #accept connection
+    while 1:
+        connectionSocket, addr = serverSocket.accept()
+        print ("Connected to " + addr[0])
+
+        handleThreads.append(threading.Thread(target = getUsername, args =(connectionSocket, addr)))
+        handleThreads[-1].start()
+
+def searchConnections(username):
+    for i in connectionList:
+        if(username == i[1]):
+            return i[0]
+
+
+#returns string of available users for chat options
+#parameters: username of person sending invtite to be removed
+def findAvailable(username):
+    string = ""
+    for i in userList:
+        if(i[1] == "Available" and i[0] != username):
+            string += i[0] + " Available" + '\n'
+    
+    string = '@' + string
+    return string
+
+             
+#returns true user found 
+def findUser(username):
+    for i in connectionList:
+        if i[1] == username:
+            return True
+    return False
+
+#parameters: 2 username
+# finds if user2 is connected, exludes user1
+def validUser_forChat(user):
+    for i in userList:
+        if (i[0] == user and i[1] == "Available"):
+            return True
+    return False    
+
+
+def convertList():
+    string = ""
+    for i in connectionList:
+        string += i[1] + " Available" + '\n'
+    string = '!' + string
+    return string
+
+def removeConnection(username):
+    for i in connectionList:
+        if i[1] == username:
+            connectionList.remove(i)
+            
+def removeUser(username):
+    for i in userList:
+        if i[0] == username:
+            userList.remove(i)
+
+def getUsername(Socket, addr):
+    Socket.send(requestUsername.encode())
+    print("sent request for username")
+    
+    try:
+        username = Socket.recv(1024).decode()
+    except:
+        Socket.close()
+        print(addr[0] + " has disconnected")
+        
+    #search for username to see if taken
+    else:
+        if not(findUser(username)):
+            connectionList.append((Socket, username, addr[0]))
+            userList.append((username, "Available"))
+        else:
+            getUsername(Socket, addr)
+            return None
+        Socket.send(("Welcome").encode()) 
+        print(username + " has connected on " + addr[0])
+        handleThreads.append(threading.Thread(target = handleMenu, args =(Socket, username, addr)))
+        handleThreads[-1].start()
+        
+
+def handleMenu(Socket, username, addr):
+    #if sendm is True; Server is expecting choice 1,2,3
+    # if false; server attempting to place client in a chat
+    sendm = True
+    clientIp = addr[0]
+
+    
+    while(1):
+        #if send Menu flag is true. send the menu
+        if(sendm == True):
+            # * header for menu
+            Socket.send(("*" + menu).encode())
+
+        ####Recieve replys####
+        try:
+            reply = Socket.recv(1024).decode()
+            
+        #Connection lost -- close socket and remove client from userlist and connections list     
+        except:
+            Socket.close()
+            removeConnection(username)
+            removeUser(username)
+            print(clientIp + " has disconnected")
+            return None
+            
+        #no errors were raised in try statement    
+        else:
+             
+            if(sendm == True):    #sendm is true. expect 1,2,3
+                #1. LIST USERS##
+                if(reply == '1'):
+                    Socket.send(convertList().encode())
+                    print("Sent a list of users to " + clientIp)
+
+                    #loop ~ resend menu and get reply
+
+                ###2. CHAT##    
+                elif(reply == '2'):
+                    #create string of available users
+                    availableUsers = findAvailable(username)
+                    #list is packet header only, list is empty
+                    if(availableUsers == '@'):
+                        #send no available user code
+                        Socket.send(("#").encode())
+                        # loop~
+                    else:
+                        Socket.send(availableUsers.encode())
+                        sendm = False
+                        print("Sent a list of available user to " + clientIp)
+                        #loop ~      
+                              
+                ##3. EXIT##
+                elif(reply == '3'):
+                    #send disconecct msg. removed from user and connecton list. handleclient Thread closes
+                    Socket.send(("0").encode())
+                    removeConnection(username)
+                    removeUser(username)
+                    Socket.close()
+                    print(addr[0] + " has disconnected")
+                    print(username + " -- removed from userList")
+                    return None
+
+
+              ##Because invites are unexpected. The user accepting the invite is
+                #still in the menu so sendm is still true
+
+                ##OPTION 4 client has replied to a chat request####
+                #reply yes
+                elif(reply == "yes"):
+                    #check if there is a invite to accept
+                    check = searchInvites(username)
+                    if(check == False):
+                        Socket.send(("invalid").encode())
+                    else:
+                        print('')
+                        ## accept invite
+                        
+                #replied no
+                elif(reply == "no"):
+                    #check if there is invite to accept
+                    check = searchInvites(username)
+                    #a invite exists. invite declined. inform the user who send the invite
+                    if(check != False):
+                        updateInvite(username, "no")
+                        soc = searchConnections(check)
+                        soc.send(("denied").encode())
+                        #loop ~
+                
+                else:
+                    Socket.send(("invalid").encode())
+    
+            ### client has entered choice 2, sendm is now false. Server is now expecting a username to chat with##
+            elif(sendm == False):    
+                user2 = reply
+                #if valid username, send requested username a invite
+                if(validUser_forChat(user2)):
+                    soc = searchConnections(user2)
+                    #store invite in invite list. format: list of (3)tuples. (from, to, (yes or no)) 
+                    inviteList.append((username, user2, ''))
+                    # $ invite header $ + username who invited them. inform the invited client of the invitation
+                    soc.send(('$' + username).encode())
+
+                    #wait for invite to be answered
+                    while(1):
+                        if(inviteList[-1][2] == "no"):
+                            sendm = True
+                            break
+                        
+                        elif(inviteList[-1][2] == "yes"):
+                            print('')
+                                           
+                #invalid username. inform the user. restart menu
+                else:
+                    Socket.send(("invalid").encode())
+                    sendm = True
+                    #loop ~ and resend menu again
+            print("here" + username)
+
+
+             
+###MAIN###
+t1 = threading.Thread(target = accept_new)
+t1.start()
+        
