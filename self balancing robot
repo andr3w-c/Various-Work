@@ -1,0 +1,162 @@
+/* Includes */
+#include "mbed.h"
+#include "XNucleoIKS01A2.h"
+#include "PID.h"
+#include <iostream>
+#include <cmath>
+ 
+const float MAX_SPEED = 0.0003f;
+const float MIN_SPEED = 0.00500f;
+ 
+ 
+const float MAX_DEGREES = 3.0f;
+const float MIN_DEGREES = 0.0f;
+ 
+float Acc_angle_error = 0;
+ 
+PwmOut M1_step(D3);
+DigitalOut M1_dir(D2);
+ 
+PwmOut M2_step(D5);
+DigitalOut M2_dir(D4);
+ 
+Serial out(USBTX, USBRX);
+ 
+ 
+ 
+float clamp(float degrees)
+{
+    if(degrees < MIN_DEGREES) return MIN_DEGREES;
+    else if (degrees >= MAX_DEGREES) return MAX_DEGREES;
+    else return degrees;
+}
+ 
+float degrees_to_period(float degrees)
+{
+    return (((MAX_SPEED - MIN_SPEED)/(MAX_DEGREES)) * clamp(std::abs(degrees)) + MIN_SPEED);
+}
+ 
+struct Vec3 {
+    float x, y, z;
+};
+ 
+/* Instantiate the expansion board */
+static XNucleoIKS01A2 *mems_expansion_board = XNucleoIKS01A2::instance(D14, D15, D4, D5);
+ 
+/* Retrieve the composing elements of the expansion board */
+static LSM303AGRMagSensor *magnetometer = mems_expansion_board->magnetometer;
+static LSM6DSLSensor *acc_gyro = mems_expansion_board->acc_gyro;
+static LSM303AGRAccSensor *accelerometer = mems_expansion_board->accelerometer;
+ 
+float unnormalize(float t){
+    return (MIN_SPEED - (t * ( MIN_SPEED - MAX_SPEED))); 
+}
+ 
+Vec3 get_accel()
+{
+    Vec3 vec3;
+    int32_t axes[3];
+    acc_gyro->get_x_axes(axes);
+ 
+    vec3.x = axes[0]/1000.0f + 0.013f;
+    vec3.y = axes[1]/1000.0f + 0.004f;
+    vec3.z = axes[2]/1000.0f - 0.032f;
+ 
+    return vec3;
+}
+ 
+void print_vec3(const char* str, const Vec3& vec3)
+{
+    std::cout << str << vec3.x << " " << vec3.y << " " << vec3.z << "\r\n";
+}
+ 
+float rad_to_deg(float radians)
+{
+    return radians * 57.2957795131f;
+}
+ 
+void calc_accel_error() {
+    Vec3 vec3;
+    
+    for(int i = 0 ; i < 200; i++){
+        vec3 = get_accel();
+        Acc_angle_error += rad_to_deg(atan(vec3.y / sqrtf(vec3.x*vec3.x + vec3.z*vec3.z)));
+ 
+    }
+    Acc_angle_error /= 200;
+}
+ 
+ 
+ 
+int main()
+{
+    magnetometer->enable();
+    accelerometer->enable();
+    acc_gyro->enable_x();
+    acc_gyro->enable_g();
+    
+    calc_accel_error();
+    Vec3 vec3;
+    float angle;
+    M1_dir = 1;
+    M2_dir = 0;
+    float p;
+    M1_step = 0.5f;
+    M2_step = 0.5f;
+    
+    //pid setup for left leaning
+    PID Lpid(1.0, 0.001, 0.00, 0.05);
+    Lpid.setInputLimits(-45.0,45.0);
+    Lpid.setOutputLimits(0.0,1.0);
+    Lpid.setSetPoint(0.0);
+    Lpid.setMode(AUTO_MODE);
+    //pid setup for right leaning
+    PID Rpid(1.0, 0.006, 0.0, 0.05);
+    Rpid.setInputLimits(-45.0,45.0);
+    Rpid.setOutputLimits(0.0,1.0);
+    Rpid.setSetPoint(0.0);
+    Rpid.setMode(AUTO_MODE);
+ 
+ 
+    float L = 0, R = 0;
+    
+    // main while loop
+    for(;;) {
+        //get xyz data
+        vec3 = get_accel();
+        
+        //calculates mean angle from 5 seperate readings
+        float mean = 0;
+        for (int i = 0; i < 5; i++) {
+            angle = rad_to_deg(atan(vec3.y / sqrtf(vec3.x*vec3.x + vec3.z*vec3.z))) - Acc_angle_error;
+            mean += angle;
+            wait(.01);
+        }
+        mean /= 5;
+        angle = mean;
+        
+        //calculate pid
+        Lpid.setProcessValue(angle);
+        Rpid.setProcessValue(angle * -1);
+        L = Lpid.compute();
+        R = Rpid.compute();
+        
+        p = abs( L-R);
+        //Change direction.
+        if(angle < 0) {
+            M1_dir = 0;
+            M2_dir = 1;
+        } else {
+            M1_dir = 1;
+            M2_dir = 0;
+        }
+ 
+        M1_step.period(unnormalize(p));
+        M2_step.period(unnormalize(p));
+ 
+        //serial print
+        out.printf("%f  %f  %f  %f\r\n", p, L, R , angle);
+ 
+        
+    }
+}
