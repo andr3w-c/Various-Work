@@ -1,0 +1,633 @@
+#include<iostream>
+#include<fstream>
+#include<string>
+#include<stdlib.h>
+
+using namespace std;
+
+/*
+Names:
+Andrew Cisneros
+Logan Good
+
+CS421 - The theory of computing
+Rika Yoshi
+*/						
+
+
+//Janpense -- to -- English Translator
+// ------ Three  Tables -------------------------------------
+// TABLES Done by: **Logan Good
+
+// ** Update the tokentype to be WORD1, WORD2, PERIOD, ERROR, EOFM, etc.
+enum tokentype {ERROR, WORD1, WORD2, PERIOD, VERB, VERBNEG, VERBPAST,
+                VERBPASTNEG, IS, WAS, OBJECT, SUBJECT, DESTINATION,
+                PRONOUN, CONNECTOR, EOFM};
+
+// ** For the display names of tokens - must be in the same order as the tokentype.
+string tokenName[18] = {"ERROR", "WORD1", "WORD2", "PERIOD", "VERB", "VERBNEG",
+                        "VERBPAST", "VERBPASTNEG", "IS", "WAS", "OBJECT", "SUBJECT",
+                        "DESTINATION", "PRONOUN", "CONNECTOR", "EOFM"};
+
+//Reserved words
+string reservedWords[30] = {"masu", "masen", "mashita", "masendeshita", "desu", "deshita",
+                            "o", "wa", "ni", "watashi", "anata", "kare", "kanojo", "sore",
+                            "mata", "soshite", "shikashi", "dakara", "eofm"};
+
+//holds japanese to english translations
+string dictionary[47][2];
+
+//------------------------------------------------------------
+
+//function prototypes
+bool word(string s);
+bool period (string s);
+tokentype convert(string str);
+void syntaxerror1(string s1, string s2);
+void syntaxerror2(string s1, string s2);
+tokentype next_token();
+bool match(tokentype expected);
+int scanner(tokentype& tt, string& w);
+void story();
+bool s();
+void after_subject();
+void noun();
+void after_object();
+void after_noun();
+void verb();
+void be();
+void tense();
+void gen(string line_type);
+void readDict();
+//--------------------------------------------------------------
+
+//variable declarations
+ifstream fin;  // global stream for reading from the input file
+ofstream fout;
+
+string saved_token, saved_lexeme, saved_E_word;
+tokentype thetype;
+bool token_available = false;
+
+
+// WORD DFA
+// Done by: **Logan Good
+// RE: ** (vowel | vowel n | consonant vowel | consonant vowel n | consonant-pair vowel | consonant-pair vowel n)^+
+bool word (string s)
+{
+  int state = 0;
+  int charpos = 0;
+  //replace the following to do the word dfa  **
+  while (s[charpos] != '\0')
+    {
+      //starts from state 0
+      if (state == 0 && (s[charpos] == 'a' || s[charpos] == 'e' || s[charpos] == 'i' || s[charpos] == 'o' ||
+                         s[charpos] == 'u' || s[charpos] == 'I' || s[charpos] == 'E'))
+        state = 1; //or state = 2? i see a double arrow line to state 2 with same condition
+      else if (state == 0 && s[charpos] == 'n')
+        state = 1;
+      else if (state == 0 && (s[charpos] == 'd' || s[charpos] == 'j' || s[charpos] == 'w' ||
+                              s[charpos] == 'y' || s[charpos] == 'z'))
+        state = 2;
+      else if (state == 0 && (s[charpos] == 'b' || s[charpos] == 'g' || s[charpos] == 'h' || s[charpos] == 'k' ||
+                              s[charpos] == 'm' || s[charpos] == 'n' || s[charpos] == 'p' || s[charpos] == 'r'))
+        state = 3;
+      else if (state == 0 && s[charpos] == 's')
+        state = 4;
+      else if (state == 0 && s[charpos] == 't')
+        state = 5;
+      else if (state == 0 && s[charpos] == 'c')
+        state = 6;
+      //starts from state 1
+      else if (state == 1 && (s[charpos] == 'a' || s[charpos] == 'e' || s[charpos] == 'i' || s[charpos] == 'o' ||
+                              s[charpos] == 'u' || s[charpos] == 'I' || s[charpos] == 'E'))
+        state = 0;
+      else if (state == 1 && (s[charpos] == 'd' || s[charpos] == 'j' || s[charpos] == 'w' ||
+                              s[charpos] == 'y' || s[charpos] == 'z'))
+        state = 2;
+      else if(state == 1 && s[charpos] == 'n')
+        state = 0;
+      else if(state == 1 && s[charpos] == 's')
+        state = 4;
+      else if(state == 1 && s[charpos] == 't')
+        state = 5;
+      else if (state == 1 && (s[charpos] == 'b' || s[charpos] == 'g' || s[charpos] == 'h' || s[charpos] == 'k' ||
+                              s[charpos] == 'm' || s[charpos] == 'n' || s[charpos] == 'p' || s[charpos] == 'r'))
+        state = 3;
+      else if (state == 1 && s[charpos] == 'c')
+        state = 6;
+      //starts from state 2
+      else if (state == 2 && (s[charpos] == 'a' || s[charpos] == 'e' || s[charpos] == 'i' || s[charpos] == 'o' ||
+                              s[charpos] == 'u' || s[charpos] == 'I' || s[charpos] == 'E'))
+        state = 0;
+      //starts from state 3
+      else if (state == 3 && (s[charpos] == 'a' || s[charpos] == 'e' || s[charpos] == 'i' || s[charpos] == 'o' ||
+                              s[charpos] == 'u' || s[charpos] == 'I' || s[charpos] == 'E'))
+        state = 0;
+      else if (state == 3 && s[charpos] == 'y')
+        state = 1;
+      //starts from state 4
+      else if (state == 4 && (s[charpos] == 'a' || s[charpos] == 'e' || s[charpos] == 'i' || s[charpos] == 'o' ||
+                              s[charpos] == 'u' || s[charpos] == 'I' || s[charpos] == 'E'))
+        state = 0;
+      else if (state == 4 && s[charpos] == 'h')
+        state = 3;
+      //starts from state 5
+      else if (state == 5 && (s[charpos] == 'a' || s[charpos] == 'e' || s[charpos] == 'i' || s[charpos] == 'o' ||
+                              s[charpos] == 'u' || s[charpos] == 'I' || s[charpos] == 'E'))
+        state = 0;
+      else if (state == 5 && s[charpos] == 's')
+        state = 3;
+      //starts from state 6
+      else if (state == 6 && s[charpos] == 'h')
+        state = 3;
+      else
+        return(false);
+      charpos++;
+    }//end of while
+
+  // where did I end up????
+  if (state == 0 || state == 1) return(true);  // end in a final state
+  else return(false);
+}
+
+// PERIOD DFA
+// Done by: **Logan Good
+bool period (string s)
+{  // complete this **
+  if(s.compare(".") == 0)
+    return true;
+  return false;
+}
+
+// ------------ Scaner and Driver -----------------------
+
+//helper function
+//Purpose: Checks for reserved words
+//Parameters: string str, string to be checked against
+tokentype convert(string str)
+{
+  if(str.compare("masu") == 0)
+    return VERB;
+  else if(str.compare("masen") == 0)
+    return VERBNEG;
+  else if(str.compare("mashita") == 0)
+    return VERBPAST;
+  else if(str.compare("masendeshita") == 0)
+    return VERBPASTNEG;
+  else if(str.compare("desu") == 0)
+    return IS;
+  else if(str.compare("deshita") == 0)
+    return WAS;
+  else if(str.compare("o") == 0)
+    return OBJECT;
+  else if(str.compare("wa") == 0)
+    return SUBJECT;
+  else if(str.compare("ni") == 0)
+    return DESTINATION;
+  else if(str.compare("watashi") == 0 || str.compare("anata") == 0 || str.compare("kare") == 0 ||
+          str.compare("kanojo") == 0 || str.compare("sore") == 0)
+    return PRONOUN;
+  else if(str.compare("mata") == 0 || str.compare("soshite") == 0 || str.compare("shikashi") == 0 || str.compare("dakara") == 0)
+    return CONNECTOR;
+  else if(str.compare("eofm") == 0)
+    return EOFM;
+  else {/*do nothing */}
+}
+
+// ----- Four Utility Functions and Globals -----------------------------------
+
+// ** Need syntaxerror1 and syntaxerror2 functions (each takes 2 args)
+//    to display syntax error messages as specified by me.  
+
+// Type of error: **Syntax Error(expected but found)
+// Done by: ** Jason Bennett
+void syntaxerror1(string s1, string s2)
+{
+  //s1 is 'token_type' and s2 is 'saved_lexeme'
+  cout << "Syntax Error: expected " << s1 << " but found " << s2 << endl;
+  cout << "==========================Program_Exit===========================" << endl;
+  exit(1);
+}
+
+//Type of error: Syntax Error(unexpected token in parser function)
+// Done by: Jason Bennett
+void syntaxerror2(string s1, string s2)
+{
+  //s1 is 'saved_lexeme' and s2 is 'parser function'
+  cout << "Syntax Error: Unexpected " << s1 << " found in " << s2 << endl;
+  cout << "==========================Program_Exit===========================" << endl;
+  exit(1);
+}
+
+// Purpose:Gets the next token type
+// Done by: Andrew Cisneros
+tokentype next_token() {
+  string theword;
+  if (!token_available)
+    {
+      //calls scanner and updats global current word and wordtype
+      scanner(thetype, theword);
+      token_available = true;
+    }
+  return thetype;    // return the saved token
+}
+
+// Purpose: To match the next token type with what is expected
+// Done by: Andrew Cisneros
+bool match(tokentype expected) {
+  if (next_token() != expected)
+    {
+      syntaxerror1(tokenName[expected], saved_lexeme);  //typeName[extype]
+      return false;
+    }
+  else
+    {
+      // cout << "Matched " << tokenName[expected] << endl;
+      token_available = false;  // eat up the token
+      return true;              // say there was a match
+    }
+}
+
+// Scanner processes only one word each time it is called
+// Gives back the token type and the word itself
+// ** Done by: Andrew Cisneros and Jason Bennett
+int scanner(tokentype& tt, string& w)
+{
+  string buffer;
+  // ** Grab the next word from the file via fin
+  // 1. If it is eofm, return right now.
+  fin >> buffer;
+  saved_lexeme = buffer;
+
+  // cout << "Scanner called using word: " << buffer << endl;
+
+  if (buffer == "eofm"){
+    tt = EOFM;
+    w = buffer;
+    return 0;
+  }
+
+  if(word(buffer))   // valid token
+    {
+      //check through reserved words
+      for(int i =0; i < 18; i++){
+        if(buffer == reservedWords[i]){ //found reserved word
+          tt = convert(reservedWords[i]);
+          w = buffer;
+          return 0;
+        }
+      }//end for
+      //not found reserver word - check last letter
+      w = buffer;
+      char lastLetter = w[w.length() - 1];
+      if(lastLetter == 'a' || lastLetter == 'e' || lastLetter == 'i' || lastLetter == 'o' || lastLetter == 'u' || lastLetter == 'n')
+        tt = WORD1;
+      else if(lastLetter == 'I' || lastLetter == 'E')
+        tt = WORD2;
+      else { /*does nothing*/ }
+
+    }
+  else if(period(buffer)){   //period found
+    w = buffer;
+    tt = PERIOD;
+  }
+  else {
+    w = buffer;
+    tt = ERROR;
+    cout << "Lexical Error: " << w << " is not a valid token" << endl;
+  }
+}//the end of scanner
+
+
+//Author: Andrew Cisneros
+//PARAMS: NONE
+//PURPOSE: read in japanese to english translations dictionary
+void readDict()
+{
+  string word, word2;
+  int counter = 0;
+  fin.open("lexicon.txt");
+
+  //read japensse word
+  while(fin >> word)
+    {
+      //read english word
+      fin >> word2;
+      dictionary[counter][0] = word;
+      dictionary[counter][1] = word2;
+      counter++;
+    }
+  fin.close();
+}
+
+//Author: Andrew Cisneros
+//gets the english word given the japanese word
+void getEword()
+{
+  for(int i = 0; i < 47; i++)
+    {
+      if(dictionary[i][0] == saved_lexeme)
+	{
+	  saved_E_word = dictionary[i][1];
+	  return;
+	}
+    }
+  saved_E_word = saved_lexeme;
+}
+
+//Author: Jason Bennett
+//Genterates english words and ouput word to screen and 
+void gen(string line_type)
+{
+  if (line_type == "CONNECTOR")
+    {
+      cout << "CONNECTOR: " << saved_E_word<<endl;
+      fout << "CONNECTOR: " << saved_E_word << endl;
+    }
+
+  else if (line_type == "ACTOR")
+    {
+      cout << "ACTOR: " << saved_E_word << endl;
+      fout << "ACTOR: " << saved_E_word << endl;
+    }
+
+  else if (line_type == "OBJECT")
+    {
+      cout << "OBJECT: " << saved_E_word << endl;
+      fout << "OBJECT: " << saved_E_word << endl;
+    }
+
+  else if (line_type == "TO")
+    {
+      cout << "TO: " << saved_E_word << endl;
+      fout << "TO: " << saved_E_word << endl;
+    }
+
+  else if (line_type == "ACTION")
+    {
+      cout << "ACTION: " << saved_E_word << endl;
+      fout << "ACTION: " << saved_E_word << endl;
+    }
+
+  else if (line_type == "DESCRIPTION")
+    {
+      cout << "DESCRIPTION: " << saved_E_word << endl;
+      fout << "DESCRIPTION: " << saved_E_word << endl;
+    }
+
+  else if (line_type == "TENSE")
+    {
+      cout << "TENSE: " << tokenName[thetype] << endl << endl;
+      fout << "TENSE: " << tokenName[thetype] << endl << endl;
+    }
+  else
+    {
+      cout << "The word ' " << saved_E_word <<" ' does not satisfy any type."<<endl;
+      fout << "The word ' " << saved_E_word << " ' does not satisfy any type." << endl;
+    }
+}
+
+// ----- RDP functions - one per non-term -------------------
+
+// The story function called by main to start processing the story
+// Grammar: <story> ::= <s> {<s>}
+// Done by: Jason Bennett
+void story()
+{
+  //cout << "Processing <story>" << endl << endl; // prints the name of the function
+  while (true)
+    {
+      if (!s())
+	  break;
+    }
+  //cout << "Successfully parsed <story>." << endl;
+}
+
+// Grammar: <s> ::= [CONNECTOR #getEword# #gen("CONNECTOR")#] <noun> #getEword#  SUBJECT #getEword# #gen("ACTOR")# <after subject>
+// Done by: Jason Bennett
+bool s()
+{
+  // cout << "Processing <s>" << endl; // prints the name of the function
+  if (next_token() == EOFM)
+      return false;
+    
+  if (next_token() == CONNECTOR)
+    {
+      getEword();
+      match(CONNECTOR);
+      gen("CONNECTOR");
+    }
+  noun();
+  match(SUBJECT);
+  gen("ACTOR");
+  after_subject();
+  return true;
+}
+
+// Grammar: <after subject> :: = <verb> #getEword# #gen("ACTION")# <tense> #gen("TENSE")# PERIOD | <noun> #getEword# <after noun>
+// Done by: Jason Bennett
+void after_subject()
+{
+  //cout << "Processing <after_subject>" << endl; // prints the name of the function
+  switch (next_token())
+       {
+    case WORD2:
+      verb();
+      tense();
+      match(PERIOD);
+      break;
+    case WORD1:
+    case PRONOUN:
+      noun();
+      after_noun();
+      break;
+    default:
+      syntaxerror2(saved_lexeme, "after_subject");
+      break;
+    }
+}
+
+//Grammar: <noun> ::=  WORD1 | PRONOUN
+//Done by: Andrew Cisneros
+void noun()
+{
+  // cout << "Processing <noun> " << endl;   // prints the name of the function
+  switch (next_token())     // If the next token after "noun" is "WORD1"
+    // or "PRONOUN"  then it matches
+    // otherwise it is a syntax error
+    {
+    case WORD1:
+      getEword();
+      match(WORD1);
+      break;
+    case PRONOUN:
+      getEword();
+      match(PRONOUN);
+      break;
+    default:
+      syntaxerror2(saved_lexeme, "noun()");
+      break;
+    }
+}
+
+//Grammar: <after object> ::= <verb> #getEword# #gen("ACTION")# <tense> #gen("TENSE")# PERIOD | <noun> #getEword# DESTINATION #getEword# #gen("TO")# <verb> #getEword# #gen("ACTION")#  <tense> #gen("TENSE")# PERIOD
+//Done By: Andrew Cisneros
+void after_object()
+{
+  //cout << "Processing <after_object>" << endl;    // prints the name of the function
+  switch (next_token())    
+    {
+    case WORD2:
+      verb();
+      tense();
+      next_token();
+      match(PERIOD);
+      break;
+      
+    case WORD1:
+    case PRONOUN:
+      noun();
+      getEword();
+      match(DESTINATION);
+      gen("TO");
+      next_token();
+      verb();
+      tense();
+      next_token();
+      match(PERIOD);
+      break;
+
+    default: syntaxerror2(saved_lexeme, "<after_object>()");
+      break;
+    }
+}
+
+//Grammar: <after noun> ::= <be> #getEword# #gen("DESCRIPTION")# #gen("TENSE")# PERIOD | DESTINATION #getEword# #gen("TO")# <verb> #getEword# #gen("ACTION")# <tense> #gen("TENSE")# PERIOD | OBJECT #getEword# #gen("OBJECT")# <after object> 
+//Done by: Andrew Cisneros
+void after_noun()
+{
+  //cout << "Processing <after_noun>" << endl;    // prints the name of the function
+  switch (next_token())
+    {
+    case IS:
+    case WAS:
+      be();
+      next_token();
+      match(PERIOD);
+      break;
+    case DESTINATION:
+      match(DESTINATION);
+      gen("TO");
+      next_token();
+      getEword();
+      verb();
+      tense();
+      next_token();
+      match(PERIOD);
+      break;
+
+    case OBJECT:
+      gen("OBJECT");
+      match(OBJECT);
+      after_object();
+      break;
+    default:
+      syntaxerror2(saved_lexeme, "<after_noun>()");
+      break;
+    }
+}
+
+// Grammar: ** <verb> ::= WORD2
+// Done by: ** Logan Good
+void verb() {
+  //cout << "Processing <verb>" << endl; // prints the name of the function
+  getEword();
+  gen("ACTION");
+  match(WORD2);
+}
+
+// Grammar: ** <be> ::= IS | WAS
+// Done by: **Logan Good
+void be() {
+  //cout << "Processing <be>" << endl; // prints the name of the function
+  gen("DESCRIPTION");
+  switch(next_token()) {
+  case IS:
+    getEword();
+    gen("TENSE");
+    match(IS);
+    break;
+  case WAS:
+    getEword();
+    gen("TENSE");
+    match(WAS);
+    break;
+  default:
+    syntaxerror2(saved_lexeme, "be()");
+  }
+}
+
+// Grammar: ** <tense> ::= VERBPAST | VERBPASTNEG | VERB | VERBNEG
+// Done by: **Logan Good
+void tense() {
+  // cout << "Processing <tense>" << endl; // prints the name of the function
+  switch(next_token()) {
+  case VERBPAST:
+    gen("TENSE");
+    match(VERBPAST);
+    break;
+  case VERBPASTNEG:
+    gen("TENSE");
+    match(VERBPASTNEG);
+    break;
+  case VERB:
+    gen("TENSE");
+    match(VERB);
+    break;
+  case VERBNEG:
+    gen("TENSE");
+    match(VERBNEG);
+    break;
+  default:
+    syntaxerror2(saved_lexeme, "tense()");
+  }
+}
+
+
+//----------- Driver ---------------------------
+
+// The new test driver to start the parser
+// Done by:  **Logan Good
+int main()
+{
+  tokentype thetype;
+  string theword;
+  string filename;
+
+  readDict();
+
+  //** opens the output file translated.txt
+  fout.open("translated.txt", ofstream::out);
+
+  cout << "Enter the input file name: ";
+  cin >> filename;
+
+  cout <<"================Program_Start================" << endl;
+
+  //opens file entered by user
+  fin.open(filename.c_str());
+
+  //** calls the <story> to start parsing
+  story();
+  //** closes the input file
+  fin.close();
+  //** closes translated.txt
+  fout.close();
+
+  cout <<"================Program_End=================" << endl;
+
+}// end
+
+
+
