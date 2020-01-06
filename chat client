@@ -1,0 +1,124 @@
+#Chat CLIENT
+#Names:  Andrew Cisneros & Eric Ackley
+# CS 436 - Intro to Networking
+
+import socket, threading, re
+import time
+
+serverName = '192.168.254.40'
+ip = socket.gethostbyname(socket.gethostname())
+serverPort = 1500
+clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+clientSocket.connect((serverName,serverPort))
+print("connected to " + serverName)
+
+#gets input for menu
+def getInput():
+        inputMsg = input("<<" + ip + ": ")
+        clientSocket.send(inputMsg.encode())
+        
+ #get input for username       
+def getUser():
+    inputMsg = input("Enter username: ")
+    clientSocket.send(inputMsg.encode())
+
+           
+    
+#recieve messages from the server and process them                            
+def recvMessage():
+    while 1:
+        try:
+            message = clientSocket.recv(1024).decode()
+        except:
+            break
+        
+        else:
+            #disconnect msg: '0'
+            #Disconect from server. Close the connection Socket    
+            if(message == '0'):
+                print("Goodbye")
+                clientSocket.close()
+
+
+            #msg: 'Welcome"
+            #print Welcome to the chat lobby
+            elif(message == "Welcome"):
+                    print("Welcome to the chat lobby ~ \n")
+
+        
+            #msg:"requestUsername"
+            #server has requested username
+            #create thread to handle user input     
+            elif(message == "requestUsername"):
+                inputThread = threading.Thread(target = getUser)
+                inputThread.start()
+
+                
+            #Message header was '!'. Server has sent a list of all users currenlty connected to the chatServer and their availibitly status
+            #Extract message header and print the list  
+            elif(message[0] == '!'):
+                message = message.replace("!", "")
+                print(message)
+
+                
+            #Message was '@'. Server has sent a list of users avaible to chat with
+            #print the list and and create a thread toget user input for the username they would like to chat with    
+            elif(message[0] == '@'):
+                message = message.replace("@", "")
+                print(message)
+                ##get username
+                inputThread = threading.Thread(target = getUser)
+                inputThread.start()
+
+    
+            #msg: '$'. msg header meaning someone has invited you to chat
+            #Display who has invited the user to chat and create a thread to get the users input    
+            elif(message[0] == '$'):
+                message = message.replace("$" , "")
+                print('\n'+ message + " has invited you to chat: Enter yes or no")
+                inviteThread = threading.Thread(target = getInput)
+                inviteThread.start()
+                
+            #msg: "denied"
+            #the username the user requested to chat with denied thier request to chat. Inform the user...
+            elif(message == "denied"):
+                print("invite denied")
+
+            #msg: #. No available users, inform the user...
+            elif(message == '#'):
+                print("No available users")
+
+
+            #print the menu and get the user number choice
+                #Menu:
+                #1. List Users
+                #2. Chat
+                #3. Exit
+                
+            elif(message[0] == '*'):
+                message = message.replace("*", "")
+                print(message)
+                inputThread = threading.Thread(target = getInput)
+                inputThread.start()
+
+           #invalid input was recieved by server
+            elif(message == "invalid"):
+                print("invalid")
+        
+            ##default case: recive the menu, print it, create thread to get user inut 
+            else:
+                print(message)
+                inputThread = threading.Thread(target = getInput)
+                inputThread.start()
+
+        
+    ###MAIN###    
+recvThread = threading.Thread(target = recvMessage)
+recvThread.start()
+recvThread.join()
+
+
+
+    
+
+
