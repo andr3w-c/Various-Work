@@ -1,5 +1,5 @@
 # Various-Work
-A various collection of my work.  
+A various collection of my work in college 
 
 Chat program, wirrten in python. CLI intereface. 
 Server manages chat between clients.
